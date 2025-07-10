@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Bản đồ Ranh giới Hành chính Việt Nam – Long Ngo, 2025</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<style>
+:root{
+  --brand-bg: #eef6fa;
+  --brand-blue: #1790e0;
+  --brand-blue-dark: #0c3a69;
+  --brand-blue-light: #b3e5fc;
+  --brand-yellow: #ffeb3b;
+  --brand-white: #fff;
+  --brand-table-border: #90caf9;
+}
+body{font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:var(--brand-bg);color:#174067;min-height:100vh;}
+.header{
+  background: linear-gradient(90deg, #e3f2fd 0%, #b3e5fc 100%);
+  padding: 1.1rem 2rem 1rem 2rem;
+  border-bottom: 4px solid var(--brand-blue);
+  box-shadow: 0 2px 16px rgba(23,144,224,.13);
+  display: flex; align-items: center; gap: 16px;
+}
+.header h1{font-size:2.1rem;font-weight:bold;color:var(--brand-blue-dark);margin:0;letter-spacing:0.5px;flex:1;}
+.map-controls{
+  position:absolute;top:18px;left:18px;z-index:1000;display:flex;flex-direction:column;gap:13px
+}
+.map-controls .box{
+  background:var(--brand-white);padding:7px 14px 7px 13px;border-left:5px solid var(--brand-blue);
+  border-radius:10px;box-shadow:0 2px 7px rgba(23,144,224,.09)
+}
+.switch{display:inline-flex;align-items:center;gap:9px;font-weight:600;color:var(--brand-blue-dark)}
+.switch .label{font-size:1.04rem}
+.switch input{display:none}
+.switch .slider{
+  width:47px;height:23px;border-radius:12px;background:var(--brand-blue-light);position:relative;cursor:pointer;transition:.3s}
+.switch .slider::before{
+  content:"";position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 5px rgba(23,144,224,.16);transition:.3s}
+.switch input:checked + .slider{background:var(--brand-blue)}
+.switch input:checked + .slider::before{transform:translateX(24px)}
+.basemap-select{margin-left:7px;font-size:1.03rem;border-radius:6px;padding:4px 8px;border:1.2px solid #b3e5fc;background:#fff;color:#1976d2;}
+.download-btn{
+  display:inline-block;padding:9px 15px;border-radius:8px;background:var(--brand-blue-dark);
+  color:#fff;font-weight:600;text-decoration:none;box-shadow:0 2px 7px rgba(23,144,224,.12)
+}
+.download-btn:hover{background:var(--brand-blue)}
+.leaflet-popup-content-wrapper{
+  background:#fff;border:1.6px solid var(--brand-blue-dark);border-radius:10px;
+  box-shadow:0 5px 18px rgba(23,144,224,.14)
+}
+.leaflet-popup-close-button{font-size:20px !important;padding:4px 7px;color:#1976d2}
+.leaflet-popup-content{padding:10px 15px !important;font-size:15px;line-height:1.47}
+.popup-title{margin:0 0 6px;font-weight:700;color:var(--brand-blue-dark)}
+.popup-row{display:flex;gap:8px;margin-bottom:5px}
+.popup-row .icon{width:22px;text-align:center}
+.province-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-blue-dark);
+  background:rgba(255,255,255,0.88);
+  padding:1px 6px 1px 6px;
+  border-radius:8px;
+  border:1.1px solid #1976d2;
+  box-shadow: 0 0 3px #b3e5fc, 0 0 5px #fff;
+  pointer-events: none;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+.leaflet-tooltip.province-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.leaflet-tooltip.province-label::after { display: none; }
+.compare-bottom{
+  position:absolute;left:0;right:0;bottom:0;max-height:42%;overflow:auto;
+  background:#fff;border-top:4px solid var(--brand-blue-dark);
+  box-shadow:0 -7px 20px rgba(23,144,224,.13);padding:14px 15px 8px 15px;
+  border-radius:13px 13px 0 0;z-index:900
+}
+#comparePanel table,#comparePanel th,#comparePanel td{border:1.5px solid var(--brand-table-border)}
+#comparePanel th,#comparePanel td{padding:5px 9px;text-align:center}
+#comparePanel th{background:var(--brand-blue-light);font-size:1.01rem;}
+.compare-remove{cursor:pointer;color:#c00;font-weight:bold}
+.compare-remove:hover{text-decoration:underline}
+.leaflet-control-zoom{display:none !important}
+.footer {
+  position: fixed; left:0; right:0; bottom:0; z-index: 99999; background:rgba(240,248,255,0.94);
+  color:#0d47a1;font-size:14px;padding:3px 16px;text-align:right;box-shadow:0 -1.5px 10px #b3e5fc;
+  letter-spacing:0.5px
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Bản đồ Ranh giới Hành chính Việt Nam</h1>
+    <select id="basemapSelect" class="basemap-select" title="Chọn nền bản đồ">
+      <option value="satellite">Vệ tinh</option>
+      <option value="roadmap">Bản đồ đường</option>
+    </select>
+  </div>
+  <div class="container">
+    <div id="map" style="height: 85vh;"></div>
+    <div class="map-controls">
+      <div class="box">
+        <label class="switch">
+          <span class="label">Cũ</span>
+          <input type="checkbox" id="switchBoundary">
+          <span class="slider"></span>
+          <span class="label">Mới</span>
+        </label>
+      </div>
+      <button id="toggleCompare" class="download-btn" style="margin-top:7px;">
+        Hiện So sánh
+      </button>
+    </div>
+    <div id="comparePanel" class="compare-bottom" style="display:none">
+      <h3><i class="fas fa-balance-scale"></i> So sánh (0/5)</h3>
+      <div id="compareTable" style="font-size:13px"></div>
+    </div>
+  </div>
+  <div class="footer">Nguồn: Long Ngo, 2025.</div>
+<script>
+const CONFIG = {
+  old:"https://raw.githubusercontent.com/lqtue/LacaProvinceMap/main/old.geojson",
+  new:"https://raw.githubusercontent.com/lqtue/LacaProvinceMap/main/new.geojson"
+};
+let map, oldLayer, newLayer;
+let baseLayerSatellite, baseLayerRoad;
+const dataStore = {old:null,new:null};
+let compareList=[];
+
+const iconMap = {
+  "Tỉnh thành mới": "📍", "Tỉnh thành cũ": "📍", "TT hành chính": "📍",
+  "GRDP 2024 (tỷ VND)": "💰", "Thu ngân sách 2024 (tỷ VND)": "💰",
+  "Diện tích (km2)": "🗺️", "Dân số": "👥", "ĐVHC cấp xã": "🏛️"
+};
+const labelOverrides = {
+  "Khánh Hoà": [12.248126980225129, 109.183807743233],
+  "TP HCM": [10.801867540653552, 106.68102175169227],
+  "TP. Hồ Chí Minh": [10.801867540653552, 106.68102175169227]
+};
+const numFmt = v=>{
+  const s = String(v).replace(/,/g, '.').replace(/ /g, '');
+  const n = parseFloat(s);
+  return isNaN(n) ? v : n.toLocaleString('vi-VN');
+};
+const ATTRS = ["Diện tích (km2)","Dân số","GRDP 2024 (tỷ VND)","Thu ngân sách 2024 (tỷ VND)","ĐVHC cấp xã"];
+const numAttrs = ["Diện tích (km2)","Dân số","GRDP 2024 (tỷ VND)","Thu ngân sách 2024 (tỷ VND)"];
+const palette = [
+  '#1565c0','#1976d2','#0277bd','#00838f','#0288d1','#00b8d4',
+  '#00897b','#00695c','#039be5','#00acc1','#0097a7','#01579b',
+  '#1e88e5','#29b6f6','#26c6da','#26a69a','#388e3c','#2e7d32',
+  '#4caf50','#0288d1','#2b32b2','#134e5e','#56ab2f','#0f2027',
+  '#43cea2','#185a9d','#283e51','#4776e6','#36d1c4','#159957'
+];
+function getProvinceColour(name){
+  let hash = 0;
+  for(let i=0;i<name.length;i++) hash = name.charCodeAt(i)+(hash<<5)-hash;
+  const idx = Math.abs(hash) % palette.length;
+  return palette[idx];
+}
+function init(){
+  map = L.map('map',{zoomControl:false, attributionControl:false}).setView([16,108],6);
+  baseLayerSatellite = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    {subdomains:['mt0','mt1','mt2','mt3'], attribution:'© Google Satellite'});
+  baseLayerRoad = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+    {subdomains:['mt0','mt1','mt2','mt3'], attribution:'© Google Maps'});
+  baseLayerSatellite.addTo(map);
+
+  L.control.attribution({prefix: ''}).addTo(map);
+  map.attributionControl.setPrefix('© Google | Leaflet');
+  oldLayer=L.layerGroup().addTo(map);
+  newLayer=L.layerGroup().addTo(map);
+
+  fetch(CONFIG.old).then(r=>r.json()).then(gOld=>{
+    dataStore.old=gOld; drawLayer(gOld,'old');
+  });
+  fetch(CONFIG.new).then(r=>r.json()).then(gNew=>{
+    dataStore.new=gNew; drawLayer(gNew,'new');
+    if (gNew && gNew.features && gNew.features.length > 0) {
+        map.fitBounds(L.geoJSON(gNew).getBounds());
+    }
+  });
+
+  const sw=document.getElementById('switchBoundary');
+  sw.checked=true; map.removeLayer(oldLayer);
+  sw.onchange=()=> {
+    if (sw.checked) {
+      map.removeLayer(oldLayer); map.addLayer(newLayer);
+    } else {
+      map.removeLayer(newLayer); map.addLayer(oldLayer);
+    }
+    updateLabels();
+  };
+  document.getElementById('basemapSelect').onchange = function() {
+    if (this.value==="satellite") {
+      map.removeLayer(baseLayerRoad); map.addLayer(baseLayerSatellite);
+    } else {
+      map.removeLayer(baseLayerSatellite); map.addLayer(baseLayerRoad);
+    }
+  };
+}
+function drawLayer(gjson, type) {
+  const layer = type === 'old' ? oldLayer : newLayer;
+  layer.clearLayers();
+  L.geoJSON(gjson, {
+    style: feature => {
+      const provName = feature.properties["Tỉnh thành mới"] || feature.properties["Tỉnh thành cũ"];
+      return {
+        color: '#ffeb3b',
+        weight: 2.7,
+        opacity: 1,
+        fillColor: getProvinceColour(provName),
+        fillOpacity: 0.73
+      };
+    },
+    onEachFeature: (f, ly) => {
+      const p = f.properties;
+      const title = (p["Tỉnh thành mới"] || p["Tỉnh thành cũ"]) || 'Thông tin';
+      let html = `<h4 class="popup-title">${title}</h4>`;
+      [
+        "Tỉnh thành mới", "Tỉnh thành cũ", "TT hành chính", ...ATTRS
+      ].forEach(k => {
+        if (p[k]) {
+          const val = numAttrs.includes(k) ? numFmt(p[k]) : p[k];
+          html += `<div class="popup-row"><span class="icon">${iconMap[k] || ''}</span>
+                 <strong>${k}:</strong> <span>${val}</span></div>`;
+        }
+      });
+      const key = (type === 'old' ? 'old:' : 'new:') + title;
+      html += `<button class="addCompare" data-key="${key}" data-type="${type}"
+             style="margin-top:8px;padding:6px 10px;border:none;border-radius:6px;
+                    background:var(--brand-blue);color:#fff;cursor:pointer">
+             + Thêm so sánh</button>`;
+      ly.bindPopup(html);
+      const labelText = type === 'old'
+        ? (p["Tỉnh thành cũ"] || p["Tỉnh thành mới"])
+        : (p["Tỉnh thành mới"] || p["Tỉnh thành cũ"]);
+      let labelPosition = null;
+      const featureGeometry = f.geometry;
+      if (labelText && labelOverrides[labelText]) {
+        labelPosition = labelOverrides[labelText];
+      }
+      else if (labelText && featureGeometry) {
+        let labelPolygonFeature = null;
+        if (featureGeometry.type === 'Polygon') {
+          labelPolygonFeature = turf.polygon(featureGeometry.coordinates);
+        } else if (featureGeometry.type === 'MultiPolygon') {
+          let largestArea = 0;
+          featureGeometry.coordinates.forEach(polygonCoords => {
+            const poly = turf.polygon(polygonCoords);
+            const area = turf.area(poly);
+            if (area > largestArea) {
+              largestArea = area;
+              labelPolygonFeature = poly;
+            }
+          });
+        }
+        if (labelPolygonFeature) {
+          try {
+            const pointOnSurface = turf.pointOnFeature(labelPolygonFeature);
+            if (pointOnSurface && pointOnSurface.geometry && pointOnSurface.geometry.coordinates) {
+              labelPosition = [pointOnSurface.geometry.coordinates[1], pointOnSurface.geometry.coordinates[0]];
+            }
+          } catch (e) {
+            const bounds = ly.getBounds();
+            if (bounds.isValid()) {
+              labelPosition = bounds.getCenter();
+            }
+          }
+        }
+      }
+      const tooltipOptions = {
+        permanent: true,
+        direction: 'center',
+        className: 'province-label',
+        pane: 'tooltipPane'
+      };
+      if (labelPosition) {
+        const customTooltip = L.tooltip(tooltipOptions)
+                               .setLatLng(labelPosition)
+                               .setContent(labelText);
+        ly.bindTooltip(customTooltip);
+      } else if (labelText) {
+        ly.bindTooltip(labelText, tooltipOptions);
+      }
+      ly.on('mouseover', e => e.target.setStyle({ fillOpacity: 0.88, weight: 3.3 }));
+      ly.on('mouseout',  e => e.target.setStyle({ fillOpacity: 0.73, weight: 2.7 }));
+    }
+  }).addTo(layer);
+}
+function updateCompare(){
+  const panel=document.getElementById('comparePanel');
+  const tgt=document.getElementById('compareTable');
+  if(!compareList.length){panel.style.display='none';return;}
+  panel.style.display='block';
+  panel.querySelector('h3').innerHTML=
+    `<i class="fas fa-balance-scale"></i> So sánh (${compareList.length}/5)`;
+  let html='<table style="width:100%;border-collapse:collapse"><tr><th>Thuộc tính</th>';
+  compareList.forEach(c=>{
+    const nm=c.props["Tỉnh thành mới"]||c.props["Tỉnh thành cũ"];
+    html+=`<th>${nm}<br><span style="font-size:11px;color:#666">(${c.layer==='old'?'Cũ':'Mới'})</span>
+           <span class="compare-remove" data-k="${c.key}">×</span></th>`;
+  });
+  html+='</tr>';
+  ATTRS.forEach(a=>{
+    html+=`<tr><td><strong>${a}</strong></td>`;
+    compareList.forEach(c=>{
+      let v=c.props[a]??'--';
+      if(numAttrs.includes(a)) v=numFmt(v);
+      html+=`<td>${v}</td>`;
+    });
+    html+='</tr>';
+  });
+  html+='</table>';
+  tgt.innerHTML=html;
+  tgt.querySelectorAll('.compare-remove').forEach(x=>{
+    x.onclick=()=>{compareList=compareList.filter(c=>c.key!==x.dataset.k);updateCompare();};
+  });
+}
+function attachCompare(){
+  map.on('popupopen',e=>{
+    const btn=e.popup._contentNode.querySelector('.addCompare');
+    if(!btn) return;
+    btn.onclick=()=>{
+      const props=e.popup._source.feature.properties;
+      const key=btn.dataset.key, layerType=btn.dataset.type;
+      if(compareList.find(c=>c.key===key)) return;
+      if(compareList.length>=5){alert('Tối đa 5 mục so sánh.');return;}
+      compareList.push({key,props,layer:layerType});
+      updateCompare();
+    };
+  });
+}
+function updateLabels() {
+  const zoom = map.getZoom();
+  map.eachLayer(layer => {
+    if (layer.getTooltip && layer.getTooltip()) {
+      const tooltip = layer.getTooltip();
+      if (tooltip.options.className && tooltip.options.className.includes('province-label')) {
+        const el = tooltip.getElement();
+        if (el) {
+          if (zoom < 7) {el.style.display = 'none';}
+          else {el.style.display = 'block'; el.style.fontSize = Math.min(Math.max(zoom * 1.5, 12), 22) + 'px';}
+        }
+      }
+    }
+  });
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  init(); attachCompare();
+  map && map.whenReady(() => { updateLabels(); });
+  map && map.on('zoomend', updateLabels);
+  map && map.on('layeradd layerremove', updateLabels);
+  const toggleBtn = document.getElementById('toggleCompare');
+  const comparePanel = document.getElementById('comparePanel');
+  toggleBtn.addEventListener('click', () => {
+    const isHidden = comparePanel.style.display === 'none' || comparePanel.style.display === '';
+    if (isHidden) {
+      comparePanel.style.display = 'block';
+      toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Ẩn So sánh';
+    } else {
+      comparePanel.style.display = 'none';
+      toggleBtn.innerHTML = '<i class="fas fa-eye"></i> Hiện So sánh';
+    }
+  });
+});
+</script>
+</body>
+</html>
